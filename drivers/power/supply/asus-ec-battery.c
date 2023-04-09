@@ -29,6 +29,7 @@ struct asusec_battery_data {
 	struct mutex				battery_lock;
 	unsigned long				batt_data_ts;
 	int					last_state;
+	u8					battery_addr;
 	u8					batt_data[DOCKRAM_ENTRY_BUFSIZE];
 };
 
@@ -41,11 +42,13 @@ static int asusec_battery_refresh(struct asusec_battery_data *priv)
 	if (time_before(jiffies, priv->batt_data_ts))
 		goto out_unlock;
 
-	ret = asus_dockram_read(priv->ec->dockram, 0x14, priv->batt_data);
+	ret = asus_dockram_read(priv->ec->dockram, priv->battery_addr,
+				priv->batt_data);
 	if (ret < 0)
 		goto out_unlock;
 
-	priv->batt_data_ts = jiffies + msecs_to_jiffies(ASUSEC_BATTERY_DATA_FRESH_MSEC);
+	priv->batt_data_ts = jiffies +
+		msecs_to_jiffies(ASUSEC_BATTERY_DATA_FRESH_MSEC);
 
 out_unlock:
 	mutex_unlock(&priv->battery_lock);
@@ -198,6 +201,7 @@ static const struct power_supply_desc asusec_battery_desc = {
 static int asusec_battery_probe(struct platform_device *pdev)
 {
 	struct asusec_battery_data *priv;
+	struct asusec_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	struct power_supply_config cfg = {};
 	int ret;
 
@@ -208,6 +212,11 @@ static int asusec_battery_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, priv);
 
 	mutex_init(&priv->battery_lock);
+
+	if (pdata)
+		priv->battery_addr = pdata->battery_addr;
+	else
+		priv->battery_addr = 0x14;
 
 	priv->ec = asusec_cell_to_ec(pdev);
 	priv->batt_data_ts = jiffies - 1;
